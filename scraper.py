@@ -1,24 +1,48 @@
-# This is a template for a Python scraper on morph.io (https://morph.io)
-# including some code snippets below that you should find helpful
+###########################################################################################
+# We use a ScraperWiki library called pdftoxml to scrape PDFs.
+# This is an example of scraping a simple PDF.
+###########################################################################################
 
-# import scraperwiki
-# import lxml.html
-#
-# # Read in a page
-# html = scraperwiki.scrape("http://foo.com")
-#
-# # Find something on the page using css selectors
-# root = lxml.html.fromstring(html)
-# root.cssselect("div[align='left']")
-#
-# # Write out to the sqlite database using scraperwiki library
-# scraperwiki.sqlite.save(unique_keys=['name'], data={"name": "susan", "occupation": "software developer"})
-#
-# # An arbitrary query against the database
-# scraperwiki.sql.select("* from data where 'name'='peter'")
+import scraperwiki
+import urllib2
+import lxml.etree
 
-# You don't have to do things with the ScraperWiki and lxml libraries.
-# You can use whatever libraries you want: https://morph.io/documentation/python
-# All that matters is that your final data is written to an SQLite database
-# called "data.sqlite" in the current working directory which has at least a table
-# called "data".
+url = "https://www.parliament.uk/documents/lords-committees/house/Minutes/2016-17/HCMinutes-1-290616.pdf"
+pdfdata = urllib2.urlopen(url).read()
+print "The pdf file has %d bytes" % len(pdfdata)
+
+xmldata = scraperwiki.pdftoxml(pdfdata)
+print "After converting to xml it has %d bytes" % len(xmldata)
+print "The first 2000 characters are: ", xmldata[:2000]
+
+root = lxml.etree.fromstring(xmldata)
+pages = list(root)
+print "The pages are numbered:", [ page.attrib.get("number")  for page in pages ]
+
+
+# this function has to work recursively because we might have "<b>Part1 <i>part 2</i></b>"
+def gettext_with_bi_tags(el):
+    res = [ ]
+    if el.text:
+        res.append(el.text)
+    for lel in el:
+        res.append("<%s>" % lel.tag)
+        res.append(gettext_with_bi_tags(lel))
+        res.append("</%s>" % lel.tag)
+        if el.tail:
+            res.append(el.tail)
+    return "".join(res)
+
+# print the first hundred text elements from the first page
+page0 = pages[0]
+
+ID = 0
+for el in list(page)[:100]:
+    if el.tag == "text":
+        print el.attrib, gettext_with_bi_tags(el)
+        record = {}
+        record["text"] = gettext_with_bi_tags(el)
+        ID = ID+1
+        record["ID"] = ID
+        scraperwiki.sqlite.save(["ID"],record)
+        print record
